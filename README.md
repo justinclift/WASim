@@ -1,4 +1,4 @@
-# WASiM
+# WASim
 A (very) experimental WebAssembly Simulator
 
 Uses a client server architecture:
