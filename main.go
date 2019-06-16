@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"net/url"
 	"reflect"
 
 	dwfRdr "github.com/go-delve/delve/pkg/dwarf/reader"
@@ -21,11 +22,26 @@ type PrologueInfo struct {
 	Col  int
 }
 
+type FileStuff struct {
+	name string
+	io.Reader
+	io.Writer
+}
+
 var (
 	// Just while developing, to allow skipping past the DWARF debug info disassembly
 	disassembleDwarf = false
 
+	// Yes, using globals for this is ugly.  But it's also super simple, so suitable for learning. ;)
 	vm *exec.VM
+	FileHandles    map[int32]FileStuff
+)
+
+const (
+	FILE_UNKNOWN = 9999999
+	FILE_STDIN
+	FILE_STDOUT
+	FILE_STDERR
 )
 
 func main() {
@@ -301,6 +317,11 @@ func funcResolver(name string) (*wasm.Module, error) {
 					ReturnTypes: []wasm.ValueType{wasm.ValueTypeI32},
 				},
 				{
+					Form:        1,
+					ParamTypes:  []wasm.ValueType{wasm.ValueTypeI32, wasm.ValueTypeI32},
+					ReturnTypes: []wasm.ValueType{wasm.ValueTypeI32},
+				},
+				{
 					Form:        2,
 					ParamTypes:  []wasm.ValueType{wasm.ValueTypeI32, wasm.ValueTypeI32, wasm.ValueTypeI32},
 					ReturnTypes: []wasm.ValueType{wasm.ValueTypeI32},
@@ -315,11 +336,16 @@ func funcResolver(name string) (*wasm.Module, error) {
 			},
 			{
 				Sig:  &m.Types.Entries[1],
+				Host: reflect.ValueOf(resourceOpen),
+				Body: &wasm.FunctionBody{},
+			},
+			{
+				Sig:  &m.Types.Entries[2],
 				Host: reflect.ValueOf(resourceRead),
 				Body: &wasm.FunctionBody{},
 			},
 			{
-				Sig:  &m.Types.Entries[1],
+				Sig:  &m.Types.Entries[2],
 				Host: reflect.ValueOf(resourceWrite),
 				Body: &wasm.FunctionBody{},
 			},
@@ -331,15 +357,20 @@ func funcResolver(name string) (*wasm.Module, error) {
 					Kind:     wasm.ExternalFunction,
 					Index:    0,
 				},
+				"resource_open": {
+					FieldStr: "resource_open",
+					Kind:     wasm.ExternalFunction,
+					Index:    1,
+				},
 				"resource_read": {
 					FieldStr: "resource_read",
 					Kind:     wasm.ExternalFunction,
-					Index:    1,
+					Index:    2,
 				},
 				"resource_write": {
 					FieldStr: "resource_write",
 					Kind:     wasm.ExternalFunction,
-					Index:    2,
+					Index:    3,
 				},
 			},
 		}
@@ -355,6 +386,55 @@ func funcResolver(name string) (*wasm.Module, error) {
 func ioGetStdout(proc *exec.Process) int32 {
 	log.Print("ioGetStdout called")
 	return 0
+}
+
+
+func resourceOpen(proc *exec.Process, urlPtr uint32, urlLen uint32) int32 {
+
+	// Read a section of the WASM vm's memory
+	data := make([]byte, urlLen)
+	bytesRead, err := proc.ReadAt(data, int64(urlPtr))
+	if err != nil {
+		log.Print(err)
+		return int32(bytesRead)
+	}
+	u := string(data)
+
+
+	_, err = url.Parse(u)
+	// uu, err := url.Parse(u)
+	if err != nil {
+		log.Printf("can't parse url %s: %v", u, err)
+		return 0
+	}
+
+	// q := uu.Query()
+	// switch uu.Scheme {
+	// case "log":
+	// 	prefix := q.Get("prefix")
+	// 	file = fileresolver.Log(os.Stdout, p.name+": "+prefix, log.LstdFlags)
+	// case "random":
+	// 	file = fileresolver.Random()
+	// case "null":
+	// 	file = fileresolver.Null()
+	// case "zero":
+	// 	file = fileresolver.Zero()
+	// case "http", "https":
+	// 	var err error
+	// 	file, err = fileresolver.HTTP(p.hc, uu)
+	// 	if err != nil {
+	// 		p.logger.Printf("can't resource_open(%q): %v", u, err)
+	// 		return 0, UnknownError
+	// 	}
+	// default:
+	// 	return 0, fmt.Errorf("unknown url: %s", u)
+	// }
+
+	// fid := rand.Int31()
+	// FileHandles[fid] = file
+
+	// Return a file handle
+	return FILE_UNKNOWN
 }
 
 
