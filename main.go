@@ -315,6 +315,11 @@ func funcResolver(name string) (*wasm.Module, error) {
 			},
 			{
 				Sig:  &m.Types.Entries[1],
+				Host: reflect.ValueOf(resourceRead),
+				Body: &wasm.FunctionBody{},
+			},
+			{
+				Sig:  &m.Types.Entries[1],
 				Host: reflect.ValueOf(resourceWrite),
 				Body: &wasm.FunctionBody{},
 			},
@@ -326,10 +331,15 @@ func funcResolver(name string) (*wasm.Module, error) {
 					Kind:     wasm.ExternalFunction,
 					Index:    0,
 				},
+				"resource_read": {
+					FieldStr: "resource_read",
+					Kind:     wasm.ExternalFunction,
+					Index:    1,
+				},
 				"resource_write": {
 					FieldStr: "resource_write",
 					Kind:     wasm.ExternalFunction,
-					Index:    1,
+					Index:    2,
 				},
 			},
 		}
@@ -347,11 +357,33 @@ func ioGetStdout(proc *exec.Process) int32 {
 	return 0
 }
 
+
+// Host function call "resource_read"
+// Just a stub for now
+func resourceRead(proc *exec.Process, fid int32, dataPtr int32, dataLen int32) int32 {
+	data := make([]byte, dataLen)
+
+	bytesRead, err := proc.ReadAt(data, int64(dataPtr))
+	if err != nil {
+		log.Print(err)
+		return 1
+	}
+
+	if bytesRead != int(dataLen) {
+		log.Printf("Incorrect # of bytes read.  Requested %d, but read %d\n", dataLen, bytesRead)
+		return 2
+	}
+
+	fmt.Printf("%s", string(data))
+	return int32(bytesRead)
+}
+
 // Host function call "resource_write"
 // Just a stub for now, printing to stdout
 func resourceWrite(proc *exec.Process, fid int32, dataPtr int32, dataLen int32) int32 {
 	data := make([]byte, dataLen)
 
+	// TODO: Figure out how to fill in data with the correct info, then change the ReadAt() call below to a WriteAt()
 	bytesRead, err := proc.ReadAt(data, int64(dataPtr))
 	if err != nil {
 		log.Print(err)
