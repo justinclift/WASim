@@ -307,9 +307,9 @@ func main() {
 
 // * Originally from Xe's land, then modified *
 func funcResolver(name string) (*wasm.Module, error) {
+	m := wasm.NewModule()
 	switch name {
 	case "env":
-		m := wasm.NewModule()
 		m.Types = &wasm.SectionTypes{
 			Entries: []wasm.FunctionSig{
 				{
@@ -392,6 +392,49 @@ func funcResolver(name string) (*wasm.Module, error) {
 		}
 		return m, nil
 
+	case "syscall":
+		m.Types = &wasm.SectionTypes{
+			Entries: []wasm.FunctionSig{
+				{
+					Form:        0,
+					ParamTypes:  []wasm.ValueType{},
+					ReturnTypes: []wasm.ValueType{wasm.ValueTypeI32},
+				},
+				{
+					Form:        1,
+					ParamTypes:  []wasm.ValueType{wasm.ValueTypeI32},
+					ReturnTypes: []wasm.ValueType{wasm.ValueTypeI32},
+				},
+				{
+					Form:        2,
+					ParamTypes:  []wasm.ValueType{wasm.ValueTypeI32, wasm.ValueTypeI32},
+					ReturnTypes: []wasm.ValueType{wasm.ValueTypeI32},
+				},
+				{
+					Form:        3,
+					ParamTypes:  []wasm.ValueType{wasm.ValueTypeI32, wasm.ValueTypeI32, wasm.ValueTypeI32},
+					ReturnTypes: []wasm.ValueType{wasm.ValueTypeI32},
+				},
+			},
+		}
+		m.FunctionIndexSpace = []wasm.Function{
+			{
+				Sig:  &m.Types.Entries[0],
+				Host: reflect.ValueOf(syscallJSStub),
+				Body: &wasm.FunctionBody{},
+			},
+		}
+		m.Export = &wasm.SectionExports{
+			Entries: map[string]wasm.ExportEntry{
+				"js": {
+					FieldStr: "js",
+					Kind:     wasm.ExternalFunction,
+					Index:    0,
+				},
+			},
+		}
+		return m, nil
+
 	default:
 		// To keep things simple for now, only allow the above functions
 		return nil, fmt.Errorf("unknown function requested")
@@ -399,6 +442,9 @@ func funcResolver(name string) (*wasm.Module, error) {
 }
 
 // * Stub host function calls *
+func syscallJSStub(proc *exec.Process) int32 {
+	return 0
+}
 
 func ioGetStderr(proc *exec.Process) int32 {
 	return FILE_STDERR
