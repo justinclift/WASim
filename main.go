@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/url"
+	"os"
 	"reflect"
 
 	dwfRdr "github.com/go-delve/delve/pkg/dwarf/reader"
@@ -33,12 +34,12 @@ var (
 	disassembleDwarf = false
 
 	// Yes, using globals for this is ugly.  But it's also super simple, so suitable for learning. ;)
-	vm *exec.VM
-	FileHandles    map[int32]FileStuff
+	vm          *exec.VM
+	FileHandles map[int32]FileStuff
 )
 
 const (
-	FILE_UNKNOWN = 9999999
+	FILE_UNKNOWN = 9999999 - iota
 	FILE_STDIN
 	FILE_STDOUT
 	FILE_STDERR
@@ -318,11 +319,16 @@ func funcResolver(name string) (*wasm.Module, error) {
 				},
 				{
 					Form:        1,
-					ParamTypes:  []wasm.ValueType{wasm.ValueTypeI32, wasm.ValueTypeI32},
+					ParamTypes:  []wasm.ValueType{wasm.ValueTypeI32},
 					ReturnTypes: []wasm.ValueType{wasm.ValueTypeI32},
 				},
 				{
 					Form:        2,
+					ParamTypes:  []wasm.ValueType{wasm.ValueTypeI32, wasm.ValueTypeI32},
+					ReturnTypes: []wasm.ValueType{wasm.ValueTypeI32},
+				},
+				{
+					Form:        3,
 					ParamTypes:  []wasm.ValueType{wasm.ValueTypeI32, wasm.ValueTypeI32, wasm.ValueTypeI32},
 					ReturnTypes: []wasm.ValueType{wasm.ValueTypeI32},
 				},
@@ -331,46 +337,56 @@ func funcResolver(name string) (*wasm.Module, error) {
 		m.FunctionIndexSpace = []wasm.Function{
 			{
 				Sig:  &m.Types.Entries[0],
+				Host: reflect.ValueOf(ioGetStderr),
+				Body: &wasm.FunctionBody{},
+			},
+			{
+				Sig:  &m.Types.Entries[0],
 				Host: reflect.ValueOf(ioGetStdout),
 				Body: &wasm.FunctionBody{},
 			},
 			{
-				Sig:  &m.Types.Entries[1],
+				Sig:  &m.Types.Entries[2],
 				Host: reflect.ValueOf(resourceOpen),
 				Body: &wasm.FunctionBody{},
 			},
 			{
-				Sig:  &m.Types.Entries[2],
+				Sig:  &m.Types.Entries[3],
 				Host: reflect.ValueOf(resourceRead),
 				Body: &wasm.FunctionBody{},
 			},
 			{
-				Sig:  &m.Types.Entries[2],
+				Sig:  &m.Types.Entries[3],
 				Host: reflect.ValueOf(resourceWrite),
 				Body: &wasm.FunctionBody{},
 			},
 		}
 		m.Export = &wasm.SectionExports{
 			Entries: map[string]wasm.ExportEntry{
-				"io_get_stdout": {
+				"io_get_stderr": {
 					FieldStr: "io_get_stdout",
 					Kind:     wasm.ExternalFunction,
 					Index:    0,
 				},
+				"io_get_stdout": {
+					FieldStr: "io_get_stdout",
+					Kind:     wasm.ExternalFunction,
+					Index:    1,
+				},
 				"resource_open": {
 					FieldStr: "resource_open",
 					Kind:     wasm.ExternalFunction,
-					Index:    1,
+					Index:    2,
 				},
 				"resource_read": {
 					FieldStr: "resource_read",
 					Kind:     wasm.ExternalFunction,
-					Index:    2,
+					Index:    3,
 				},
 				"resource_write": {
 					FieldStr: "resource_write",
 					Kind:     wasm.ExternalFunction,
-					Index:    3,
+					Index:    4,
 				},
 			},
 		}
@@ -382,12 +398,15 @@ func funcResolver(name string) (*wasm.Module, error) {
 	}
 }
 
-// Stub host function calls
-func ioGetStdout(proc *exec.Process) int32 {
-	log.Print("ioGetStdout called")
-	return 0
+// * Stub host function calls *
+
+func ioGetStderr(proc *exec.Process) int32 {
+	return FILE_STDERR
 }
 
+func ioGetStdout(proc *exec.Process) int32 {
+	return FILE_STDOUT
+}
 
 func resourceOpen(proc *exec.Process, urlPtr uint32, urlLen uint32) int32 {
 
@@ -399,7 +418,6 @@ func resourceOpen(proc *exec.Process, urlPtr uint32, urlLen uint32) int32 {
 		return int32(bytesRead)
 	}
 	u := string(data)
-
 
 	_, err = url.Parse(u)
 	// uu, err := url.Parse(u)
@@ -437,37 +455,47 @@ func resourceOpen(proc *exec.Process, urlPtr uint32, urlLen uint32) int32 {
 	return FILE_UNKNOWN
 }
 
-
 // Host function call "resource_read"
 // Just a stub for now
 func resourceRead(proc *exec.Process, fid int32, dataPtr int32, dataLen int32) int32 {
-	data := make([]byte, dataLen)
 
-	bytesRead, err := proc.ReadAt(data, int64(dataPtr))
-	if err != nil {
-		log.Print(err)
-		return 1
-	}
+	// TODO: This function seems like it should be reading bytes from the given file (eg os.Stdin), then writing
+	//       them to the given spot in the VM's memory, up to dataLen in length
 
-	if bytesRead != int(dataLen) {
-		log.Printf("Incorrect # of bytes read.  Requested %d, but read %d\n", dataLen, bytesRead)
-		return 2
-	}
+	// data := make([]byte, dataLen)
+	// bytesRead, err := proc.ReadAt(data, int64(dataPtr))  // TODO: proc.Write() is probably the call to use here
+	// if err != nil {
+	// 	log.Print(err)
+	// 	return 1
+	// }
+	//
+	// if bytesRead != int(dataLen) {
+	// 	log.Printf("Incorrect # of bytes read.  Requested %d, but read %d\n", dataLen, bytesRead)
+	// 	return 2
+	// }
 
-	fmt.Printf("%s", string(data))
-	return int32(bytesRead)
+	// fmt.Printf("%s", string(data))
+	return int32(0)
 }
 
 // Host function call "resource_write"
-// Just a stub for now, printing to stdout
 func resourceWrite(proc *exec.Process, fid int32, dataPtr int32, dataLen int32) int32 {
-	data := make([]byte, dataLen)
 
-	// TODO: Figure out how to fill in data with the correct info, then change the ReadAt() call below to a WriteAt()
+	// Determine the output file to write to
+	var outTarget *os.File
+	switch fid {
+	case FILE_STDERR:
+		outTarget = os.Stderr
+	case FILE_STDOUT:
+		outTarget = os.Stdout
+	}
+
+	// Read the data from the VM's memory
+	data := make([]byte, dataLen)
 	bytesRead, err := proc.ReadAt(data, int64(dataPtr))
 	if err != nil {
 		log.Print(err)
-		return 1
+		return 1 // TODO: Find out if there are meaningful error codes defined in the spec that should be returned
 	}
 
 	if bytesRead != int(dataLen) {
@@ -475,7 +503,11 @@ func resourceWrite(proc *exec.Process, fid int32, dataPtr int32, dataLen int32) 
 		return 2
 	}
 
-	fmt.Printf("%s", string(data))
+	// Write the data to the requested output
+	_, err = fmt.Fprintf(outTarget, "%s", string(data))
+	if err != nil {
+		log.Print(err)
+	}
 	return 0
 }
 
