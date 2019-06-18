@@ -23,7 +23,7 @@ type FileStuff struct {
 }
 
 var (
-	// Just while developing, to allow skipping past the DWARF debug info disassembly
+	// Just while developing, to allow skipping past the DWARF debug info disassembly step
 	disassembleDwarf = false
 
 	// Yes, using globals for this is ugly.  But it's also super simple, so suitable for learning. ;)
