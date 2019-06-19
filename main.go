@@ -5,6 +5,7 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"os"
 	"time"
 
 	"github.com/go-interpreter/wagon/exec"
@@ -34,8 +35,17 @@ const (
 )
 
 func main() {
-	// Connect to the database
+	// Load the wasm file containing DWARF debug info
 	var err error
+	if len(os.Args) != 2 {
+		log.Fatal("Needs the .wasm file name to run, given on the command line")
+	}
+	raw, err := ioutil.ReadFile(os.Args[1]) // Yes, this could be done a lot better ;)
+	if err != nil {
+		panic(err)
+	}
+
+	// Connect to the database
 	cfg := pgx.ConnConfig{
 		Host:      "/tmp",
 		User:      "jc",
@@ -57,13 +67,6 @@ func main() {
 		log.Fatalf("retrieving next execution run number failed: %v\n", err)
 	}
 	log.Printf("opLog execution run: %d\n", dbRun)
-
-	// Load the wasm file containing DWARF debug info
-	// TODO: Pass the file to load via command line arguments
-	raw, err := ioutil.ReadFile("testdata/hello-world-simplified.wasm")
-	if err != nil {
-		panic(err)
-	}
 
 	// Parse the wasm file
 	m, err := wasm.ReadModule(bytes.NewReader(raw), funcResolver)
