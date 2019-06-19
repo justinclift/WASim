@@ -5,9 +5,11 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"time"
 
 	"github.com/go-interpreter/wagon/exec"
 	"github.com/go-interpreter/wagon/wasm"
+	"github.com/jackc/pgx"
 )
 
 type PrologueInfo struct {
@@ -16,19 +18,12 @@ type PrologueInfo struct {
 	Col  int
 }
 
-type FileStuff struct {
-	name string
-	io.Reader
-	io.Writer
-}
-
 var (
 	// Just while developing, to allow skipping past the DWARF debug info disassembly step
 	disassembleDwarf = false
 
 	// Yes, using globals for this is ugly.  But it's also super simple, so suitable for learning. ;)
-	vm          *exec.VM
-	FileHandles map[int32]FileStuff
+	vm *exec.VM
 )
 
 const (
@@ -39,13 +34,38 @@ const (
 )
 
 func main() {
-	// Load an example wasm file containing DWARF debug info
+	// Connect to the database
+	var err error
+	cfg := pgx.ConnConfig{
+		Host:      "/tmp",
+		User:      "jc",
+		Database:  "wasim",
+		TLSConfig: nil,
+	}
+
+	pgPoolConfig := pgx.ConnPoolConfig{cfg, 45, nil, 5 * time.Second}
+	pg, err := pgx.NewConnPool(pgPoolConfig)
+	if err != nil {
+		panic(err)
+	}
+
+	// Grab the next available execution_run number
+	var dbRun int
+	dbQuery := `SELECT nextval('execution_runs_seq')`
+	err = pg.QueryRow(dbQuery).Scan(&dbRun)
+	if err != nil {
+		log.Fatalf("retrieving next execution run number failed: %v\n", err)
+	}
+	log.Printf("opLog execution run: %d\n", dbRun)
+
+	// Load the wasm file containing DWARF debug info
 	// TODO: Pass the file to load via command line arguments
 	raw, err := ioutil.ReadFile("testdata/hello-world-simplified.wasm")
 	if err != nil {
 		panic(err)
 	}
 
+	// Parse the wasm file
 	m, err := wasm.ReadModule(bytes.NewReader(raw), funcResolver)
 	if err != nil {
 		panic(err)
@@ -62,7 +82,7 @@ func main() {
 	}
 
 	// Construct the wasm VM
-	vm, err = exec.NewVM(m)
+	vm, err = exec.NewVM(m, exec.PGConnPool(pg), exec.PGDBRun(dbRun))
 	if err != nil {
 		log.Fatalf("could not create wasm vm: %v", err)
 	}
