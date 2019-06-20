@@ -141,6 +141,34 @@ func funcResolver(name string) (*wasm.Module, error) {
 		}
 		return m, nil
 
+	case "imports": // For debugging wagon custom_section.wasm test data
+		m.Types = &wasm.SectionTypes{
+			Entries: []wasm.FunctionSig{
+				{
+					Form:        0,
+					ParamTypes:  []wasm.ValueType{wasm.ValueTypeI32},
+					ReturnTypes: []wasm.ValueType{},
+				},
+			},
+		}
+		m.FunctionIndexSpace = []wasm.Function{
+			{
+				Sig:  &m.Types.Entries[0],
+				Host: reflect.ValueOf(wagonImportStub),
+				Body: &wasm.FunctionBody{},
+			},
+		}
+		m.Export = &wasm.SectionExports{
+			Entries: map[string]wasm.ExportEntry{
+				"imported_func": {
+					FieldStr: "imported_func",
+					Kind:     wasm.ExternalFunction,
+					Index:    0,
+				},
+			},
+		}
+		return m, nil
+
 	default:
 		// To keep things simple for now, only allow the above functions
 		return nil, fmt.Errorf("unknown function requested")
@@ -148,6 +176,10 @@ func funcResolver(name string) (*wasm.Module, error) {
 }
 
 // * Stub host function calls *
+func wagonImportStub(proc *exec.Process, x int32) {
+	return
+}
+
 func syscallJSStub(proc *exec.Process) int32 {
 	return 0
 }
