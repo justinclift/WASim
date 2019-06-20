@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"io"
 	"io/ioutil"
 	"log"
 	"os"
@@ -74,8 +73,6 @@ func main() {
 		panic(err)
 	}
 
-	// NOTE: Much of this was initially copied from Delve, then modified
-
 	// Construct a DWARF object from the section data
 	if disassembleDwarf {
 		err = parseDwarf(m)
@@ -109,22 +106,4 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-}
-
-// Returns the DWARF data contained in a given custom section
-func extractDwarf(name string, data []byte) []byte {
-	// Skip past the section name string at the start
-	r := bytes.NewReader(data)
-	var err error
-	b := make([]byte, len(name)+1)
-	if _, err = io.ReadFull(r, b); err != nil {
-		panic(err)
-	}
-
-	// The remaining data should be the DWARF info
-	var z bytes.Buffer
-	if _, err = io.Copy(&z, r); err != nil {
-		panic(err)
-	}
-	return z.Bytes()
 }
