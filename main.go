@@ -81,6 +81,25 @@ func main() {
 		}
 	}
 
+	// Add the function names to the database
+	for i, j := range m.FunctionIndexSpace {
+		if j.Name == "" {
+			continue
+		}
+		dbQuery := `
+			INSERT INTO execution_run_metadata (run_num, function_num, function_name)
+			VALUES ($1, $2, $3)`
+		var commandTag pgx.CommandTag
+		commandTag, err = pg.Exec(dbQuery, dbRun, i, j.Name)
+		if err != nil {
+			log.Print(err)
+			return
+		}
+		if numRows := commandTag.RowsAffected(); numRows != 1 {
+			log.Printf("Wrong number of rows (%v) affected when adding a function name to the database: %s\n", numRows, j.Name)
+		}
+	}
+
 	// Construct the wasm VM
 	vm, err = exec.NewVM(m, exec.PGConnPool(pg), exec.PGDBRun(dbRun))
 	if err != nil {
