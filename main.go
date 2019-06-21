@@ -81,16 +81,13 @@ func main() {
 		}
 	}
 
-	// Add the function names to the database
+	// Add the function info to the database
 	for i, j := range m.FunctionIndexSpace {
-		if j.Name == "" {
-			continue
-		}
 		dbQuery := `
-			INSERT INTO execution_run_metadata (run_num, function_num, function_name)
-			VALUES ($1, $2, $3)`
+			INSERT INTO execution_run_functions (run_num, function_num, function_name, num_returns, num_params)
+			VALUES ($1, $2, $3, $4, $5)`
 		var commandTag pgx.CommandTag
-		commandTag, err = pg.Exec(dbQuery, dbRun, i, j.Name)
+		commandTag, err = pg.Exec(dbQuery, dbRun, i, j.Name, len(j.Sig.ReturnTypes), len(j.Sig.ParamTypes))
 		if err != nil {
 			log.Print(err)
 			return
