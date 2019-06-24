@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"fmt"
 	"log"
 	"net/url"
@@ -58,6 +59,11 @@ func funcResolver(name string) (*wasm.Module, error) {
 					ParamTypes:  []wasm.ValueType{wasm.ValueTypeI32, wasm.ValueTypeI32, wasm.ValueTypeI32, wasm.ValueTypeI32, wasm.ValueTypeI32, wasm.ValueTypeI32, wasm.ValueTypeI32, wasm.ValueTypeI32, wasm.ValueTypeI32},
 					ReturnTypes: []wasm.ValueType{},
 				},
+				{
+					Form:        8,
+					ParamTypes:  []wasm.ValueType{},
+					ReturnTypes: []wasm.ValueType{wasm.ValueTypeF64},
+				},
 			},
 		}
 		m.FunctionIndexSpace = []wasm.Function{
@@ -109,6 +115,11 @@ func funcResolver(name string) (*wasm.Module, error) {
 			{
 				Sig:  &m.Types.Entries[5],
 				Host: reflect.ValueOf(syscallJSStringVal),
+				Body: &wasm.FunctionBody{},
+			},
+			{
+				Sig:  &m.Types.Entries[8],
+				Host: reflect.ValueOf(runtimeTicks),
 				Body: &wasm.FunctionBody{},
 			},
 		}
@@ -164,6 +175,11 @@ func funcResolver(name string) (*wasm.Module, error) {
 					Kind:     wasm.ExternalFunction,
 					Index:    9,
 				},
+				"runtime.ticks": {
+					FieldStr: "runtime.ticks",
+					Kind:     wasm.ExternalFunction,
+					Index:    10,
+				},
 			},
 		}
 		return m, nil
@@ -208,48 +224,72 @@ func syscallJSValueCall(proc *exec.Process, a int32, b int32, c int32, d int32, 
 	return
 }
 
-func syscallJSValueGet(proc *exec.Process, a int32, b int32, propertyNamePtr int32, propertyNameLen int32, e int32, f int32) {
-	fmt.Println("In syscallJSValueGet()")
-
+func syscallJSValueGet(proc *exec.Process, returnPtr int32, paramB int32, propertyNamePtr int32, propertyNameLen int32, paramE int32, paramF int32) {
 	propertyName := make([]byte, propertyNameLen)
 	_, err := proc.ReadAt(propertyName, int64(propertyNamePtr))
 	if err != nil {
 		log.Print(err)
 	}
-	fmt.Printf("Property name to retrieve value of: %s\n", propertyName)
+	// fmt.Printf("In syscallJSValueGet(\"%s\")\n", propertyName)
+	// fmt.Printf("  * returnPtr: %d\n", returnPtr)
+	//
+	// fmt.Printf("  * paramB: %d\n", paramB) // No idea what this is for, yet
+	// fmt.Printf("  * paramE: %d\n", paramE) // No idea what this is for, yet
+	// fmt.Printf("  * paramF: %d\n", paramF) // No idea what this is for, yet
 
+	// data := make([]byte, 8)
+	// _, err = proc.ReadAt(data, int64(paramB))
+	// if err != nil {
+	// 	log.Print(err)
+	// }
+	// fmt.Printf("Heap dump for memory[paramB]: %v\n", data)
+	//
+	// _, err = proc.ReadAt(data, int64(paramE))
+	// if err != nil {
+	// 	log.Print(err)
+	// }
+	// fmt.Printf("Heap dump for memory[paramE]: %v\n", data)
+	//
+	// _, err = proc.ReadAt(data, int64(paramF))
+	// if err != nil {
+	// 	log.Print(err)
+	// }
+	// fmt.Printf("Heap dump for memory[paramF]: %v\n", data)
 
-	fmt.Printf("  * a: %d\n", a)
-	fmt.Printf("  * b: %d\n", b)
-	fmt.Printf("  * e: %d\n", e)
-	fmt.Printf("  * f: %d\n", f)
-
-	someString := "document"
-	data := make([]byte, len(someString))
-	_, err = proc.ReadAt(data, int64(a))
+	// Write JS Object ID to memory at the return pointer location
+	var endianess = binary.LittleEndian
+	var val uint64
+	switch string(propertyName) { // Known good object IDs captured from Go wasm running in FF
+	case "Object":
+		val = 0x7FF8000300000008
+	case "Array":
+		val = 0x7FF8000300000009
+	case "Int8Array":
+		val = 0x7FF800030000000A
+	case "Int16Array":
+		val = 0x7FF800030000000B
+	case "Int32Array":
+		val = 0x7FF800030000000C
+	case "Uint8Array":
+		val = 0x7FF800030000000D
+	case "Uint16Array":
+		val = 0x7FF800030000000E
+	case "Uint32Array":
+		val = 0x7FF800030000000F
+	case "Float32Array":
+		val = 0x7FF8000300000010
+	case "Float64Array":
+		val = 0x7FF8000300000011
+	case "document":
+		val = 0x7FF8000300000012
+	}
+	buf := make([]byte, 8)
+	endianess.PutUint64(buf, val)
+	_, err = proc.WriteAt(buf, int64(returnPtr))
 	if err != nil {
 		log.Print(err)
 	}
-	fmt.Printf("Heap dump for memory[a]: %v\n", data)
-	data = make([]byte, len(someString))
-	_, err = proc.ReadAt(data, int64(b))
-	if err != nil {
-		log.Print(err)
-	}
-	fmt.Printf("Heap dump for memory[b]: %v\n", data)
-
-	data = make([]byte, len(someString))
-	_, err = proc.ReadAt(data, int64(e))
-	if err != nil {
-		log.Print(err)
-	}
-	fmt.Printf("Heap dump for memory[e]: %v\n", data)
-	data = make([]byte, len(someString))
-	_, err = proc.ReadAt(data, int64(f))
-	if err != nil {
-		log.Print(err)
-	}
-	fmt.Printf("Heap dump for memory[f]: %v\n", data)
+	fmt.Printf("Returned JS object ID %#x for js.Global().Get(\"%s\")", val, propertyName)
 	return
 }
 
@@ -268,10 +308,13 @@ func syscallJSStringVal(proc *exec.Process, a int32, b int32, c int32, d int32, 
 	return
 }
 
-
 // * Other host function calls *
 func wagonImportStub(proc *exec.Process, x int32) {
 	return
+}
+
+func runtimeTicks(proc *exec.Process) int32 {
+	return FILE_STDOUT
 }
 
 func ioGetStderr(proc *exec.Process) int32 {
