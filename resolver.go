@@ -230,31 +230,6 @@ func syscallJSValueGet(proc *exec.Process, returnPtr int32, paramB int32, proper
 	if err != nil {
 		log.Print(err)
 	}
-	// fmt.Printf("In syscallJSValueGet(\"%s\")\n", propertyName)
-	// fmt.Printf("  * returnPtr: %d\n", returnPtr)
-	//
-	// fmt.Printf("  * paramB: %d\n", paramB) // No idea what this is for, yet
-	// fmt.Printf("  * paramE: %d\n", paramE) // No idea what this is for, yet
-	// fmt.Printf("  * paramF: %d\n", paramF) // No idea what this is for, yet
-
-	// data := make([]byte, 8)
-	// _, err = proc.ReadAt(data, int64(paramB))
-	// if err != nil {
-	// 	log.Print(err)
-	// }
-	// fmt.Printf("Heap dump for memory[paramB]: %v\n", data)
-	//
-	// _, err = proc.ReadAt(data, int64(paramE))
-	// if err != nil {
-	// 	log.Print(err)
-	// }
-	// fmt.Printf("Heap dump for memory[paramE]: %v\n", data)
-	//
-	// _, err = proc.ReadAt(data, int64(paramF))
-	// if err != nil {
-	// 	log.Print(err)
-	// }
-	// fmt.Printf("Heap dump for memory[paramF]: %v\n", data)
 
 	// Write JS Object ID to memory at the return pointer location
 	var endianess = binary.LittleEndian
