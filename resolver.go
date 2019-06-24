@@ -38,6 +38,26 @@ func funcResolver(name string) (*wasm.Module, error) {
 					ParamTypes:  []wasm.ValueType{wasm.ValueTypeI32, wasm.ValueTypeI32, wasm.ValueTypeI32},
 					ReturnTypes: []wasm.ValueType{wasm.ValueTypeI32},
 				},
+				{
+					Form:        4,
+					ParamTypes:  []wasm.ValueType{wasm.ValueTypeI32, wasm.ValueTypeI32, wasm.ValueTypeI32, wasm.ValueTypeI32},
+					ReturnTypes: []wasm.ValueType{},
+				},
+				{
+					Form:        5,
+					ParamTypes:  []wasm.ValueType{wasm.ValueTypeI32, wasm.ValueTypeI32, wasm.ValueTypeI32, wasm.ValueTypeI32, wasm.ValueTypeI32},
+					ReturnTypes: []wasm.ValueType{},
+				},
+				{
+					Form:        6,
+					ParamTypes:  []wasm.ValueType{wasm.ValueTypeI32, wasm.ValueTypeI32, wasm.ValueTypeI32, wasm.ValueTypeI32, wasm.ValueTypeI32, wasm.ValueTypeI32},
+					ReturnTypes: []wasm.ValueType{},
+				},
+				{
+					Form:        7,
+					ParamTypes:  []wasm.ValueType{wasm.ValueTypeI32, wasm.ValueTypeI32, wasm.ValueTypeI32, wasm.ValueTypeI32, wasm.ValueTypeI32, wasm.ValueTypeI32, wasm.ValueTypeI32, wasm.ValueTypeI32, wasm.ValueTypeI32},
+					ReturnTypes: []wasm.ValueType{},
+				},
 			},
 		}
 		m.FunctionIndexSpace = []wasm.Function{
@@ -64,6 +84,31 @@ func funcResolver(name string) (*wasm.Module, error) {
 			{
 				Sig:  &m.Types.Entries[3],
 				Host: reflect.ValueOf(resourceWrite),
+				Body: &wasm.FunctionBody{},
+			},
+			{
+				Sig:  &m.Types.Entries[7],
+				Host: reflect.ValueOf(syscallJSValueCall),
+				Body: &wasm.FunctionBody{},
+			},
+			{
+				Sig:  &m.Types.Entries[6],
+				Host: reflect.ValueOf(syscallJSValueGet),
+				Body: &wasm.FunctionBody{},
+			},
+			{
+				Sig:  &m.Types.Entries[4],
+				Host: reflect.ValueOf(syscallJSValuePrepareString),
+				Body: &wasm.FunctionBody{},
+			},
+			{
+				Sig:  &m.Types.Entries[6],
+				Host: reflect.ValueOf(syscallJSValueLoadString),
+				Body: &wasm.FunctionBody{},
+			},
+			{
+				Sig:  &m.Types.Entries[5],
+				Host: reflect.ValueOf(syscallJSStringVal),
 				Body: &wasm.FunctionBody{},
 			},
 		}
@@ -94,48 +139,30 @@ func funcResolver(name string) (*wasm.Module, error) {
 					Kind:     wasm.ExternalFunction,
 					Index:    4,
 				},
-			},
-		}
-		return m, nil
-
-	case "syscall":
-		m.Types = &wasm.SectionTypes{
-			Entries: []wasm.FunctionSig{
-				{
-					Form:        0,
-					ParamTypes:  []wasm.ValueType{},
-					ReturnTypes: []wasm.ValueType{wasm.ValueTypeI32},
-				},
-				{
-					Form:        1,
-					ParamTypes:  []wasm.ValueType{wasm.ValueTypeI32},
-					ReturnTypes: []wasm.ValueType{wasm.ValueTypeI32},
-				},
-				{
-					Form:        2,
-					ParamTypes:  []wasm.ValueType{wasm.ValueTypeI32, wasm.ValueTypeI32},
-					ReturnTypes: []wasm.ValueType{wasm.ValueTypeI32},
-				},
-				{
-					Form:        3,
-					ParamTypes:  []wasm.ValueType{wasm.ValueTypeI32, wasm.ValueTypeI32, wasm.ValueTypeI32},
-					ReturnTypes: []wasm.ValueType{wasm.ValueTypeI32},
-				},
-			},
-		}
-		m.FunctionIndexSpace = []wasm.Function{
-			{
-				Sig:  &m.Types.Entries[0],
-				Host: reflect.ValueOf(syscallJSStub),
-				Body: &wasm.FunctionBody{},
-			},
-		}
-		m.Export = &wasm.SectionExports{
-			Entries: map[string]wasm.ExportEntry{
-				"js": {
-					FieldStr: "js",
+				"syscall/js.valueCall": {
+					FieldStr: "syscall/js.valueCall",
 					Kind:     wasm.ExternalFunction,
-					Index:    0,
+					Index:    5,
+				},
+				"syscall/js.valueGet": {
+					FieldStr: "syscall/js.valueGet",
+					Kind:     wasm.ExternalFunction,
+					Index:    6,
+				},
+				"syscall/js.valuePrepareString": {
+					FieldStr: "syscall/js.valuePrepareString",
+					Kind:     wasm.ExternalFunction,
+					Index:    7,
+				},
+				"syscall/js.valueLoadString": {
+					FieldStr: "syscall/js.valueLoadString",
+					Kind:     wasm.ExternalFunction,
+					Index:    8,
+				},
+				"syscall/js.stringVal": {
+					FieldStr: "syscall/js.stringVal",
+					Kind:     wasm.ExternalFunction,
+					Index:    9,
 				},
 			},
 		}
@@ -175,13 +202,76 @@ func funcResolver(name string) (*wasm.Module, error) {
 	}
 }
 
-// * Stub host function calls *
-func wagonImportStub(proc *exec.Process, x int32) {
+// * JS host function calls *
+func syscallJSValueCall(proc *exec.Process, a int32, b int32, c int32, d int32, e int32, f int32, g int32, h int32, i int32) {
+	fmt.Print("In syscallJSValueCall()")
 	return
 }
 
-func syscallJSStub(proc *exec.Process) int32 {
-	return 0
+func syscallJSValueGet(proc *exec.Process, a int32, b int32, propertyNamePtr int32, propertyNameLen int32, e int32, f int32) {
+	fmt.Println("In syscallJSValueGet()")
+
+	propertyName := make([]byte, propertyNameLen)
+	_, err := proc.ReadAt(propertyName, int64(propertyNamePtr))
+	if err != nil {
+		log.Print(err)
+	}
+	fmt.Printf("Property name to retrieve value of: %s\n", propertyName)
+
+
+	fmt.Printf("  * a: %d\n", a)
+	fmt.Printf("  * b: %d\n", b)
+	fmt.Printf("  * e: %d\n", e)
+	fmt.Printf("  * f: %d\n", f)
+
+	someString := "document"
+	data := make([]byte, len(someString))
+	_, err = proc.ReadAt(data, int64(a))
+	if err != nil {
+		log.Print(err)
+	}
+	fmt.Printf("Heap dump for memory[a]: %v\n", data)
+	data = make([]byte, len(someString))
+	_, err = proc.ReadAt(data, int64(b))
+	if err != nil {
+		log.Print(err)
+	}
+	fmt.Printf("Heap dump for memory[b]: %v\n", data)
+
+	data = make([]byte, len(someString))
+	_, err = proc.ReadAt(data, int64(e))
+	if err != nil {
+		log.Print(err)
+	}
+	fmt.Printf("Heap dump for memory[e]: %v\n", data)
+	data = make([]byte, len(someString))
+	_, err = proc.ReadAt(data, int64(f))
+	if err != nil {
+		log.Print(err)
+	}
+	fmt.Printf("Heap dump for memory[f]: %v\n", data)
+	return
+}
+
+func syscallJSValuePrepareString(proc *exec.Process, a int32, b int32, c int32, d int32, e int32, f int32) {
+	fmt.Print("In syscallJSValuePrepareString()")
+	return
+}
+
+func syscallJSValueLoadString(proc *exec.Process, a int32, b int32, c int32, d int32, e int32, f int32) {
+	fmt.Print("In syscallJSValueLoadString()")
+	return
+}
+
+func syscallJSStringVal(proc *exec.Process, a int32, b int32, c int32, d int32, e int32, f int32) {
+	fmt.Print("In syscallJSStringVal()")
+	return
+}
+
+
+// * Other host function calls *
+func wagonImportStub(proc *exec.Process, x int32) {
+	return
 }
 
 func ioGetStderr(proc *exec.Process) int32 {
