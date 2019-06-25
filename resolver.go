@@ -12,6 +12,29 @@ import (
 	"github.com/go-interpreter/wagon/wasm"
 )
 
+type jsRef struct {
+	Name   string
+	Parent uint32
+	Type   int
+}
+
+var (
+	// Values 0-7 are pre-reserved for values with specific meaning:
+	//   https://github.com/golang/go/blob/4ce6a8e89668b87dce67e2f55802903d6eb9110a/src/syscall/js/js.go#L76-L83
+	highestRef = uint32(8)
+
+	jsRefs = make(map[uint32]jsRef)
+)
+
+func newJSRef(name string, jsType int, parent uint32) (id uint32, j jsRef) {
+	// TODO: Probably needs mutex / atomic at some point
+	j = jsRef{Name: name, Parent: parent, Type: jsType}
+	n := highestRef
+	jsRefs[n] = j
+	highestRef++
+	return n, j
+}
+
 // * Originally from Xe's land, then modified *
 func funcResolver(name string) (*wasm.Module, error) {
 	m := wasm.NewModule()
@@ -224,47 +247,46 @@ func syscallJSValueCall(proc *exec.Process, a int32, b int32, c int32, d int32, 
 	return
 }
 
-func syscallJSValueGet(proc *exec.Process, returnPtr int32, paramB int32, propertyNamePtr int32, propertyNameLen int32, paramE int32, paramF int32) {
+func syscallJSValueGet(proc *exec.Process, returnPtr int32, valueAddrPtr int32, propertyNamePtr int32, propertyNameLen int32, paramE int32, paramF int32) {
+	var endianess = binary.LittleEndian
 	propertyName := make([]byte, propertyNameLen)
 	_, err := proc.ReadAt(propertyName, int64(propertyNamePtr))
 	if err != nil {
 		log.Print(err)
 	}
 
-	// Write JS Object ID to memory at the return pointer location
-	var endianess = binary.LittleEndian
-	var val uint64
-	switch string(propertyName) { // Known good object IDs captured from Go wasm running in FF
-	case "Object":
-		val = 0x7FF8000300000008
-	case "Array":
-		val = 0x7FF8000300000009
-	case "Int8Array":
-		val = 0x7FF800030000000A
-	case "Int16Array":
-		val = 0x7FF800030000000B
-	case "Int32Array":
-		val = 0x7FF800030000000C
-	case "Uint8Array":
-		val = 0x7FF800030000000D
-	case "Uint16Array":
-		val = 0x7FF800030000000E
-	case "Uint32Array":
-		val = 0x7FF800030000000F
-	case "Float32Array":
-		val = 0x7FF8000300000010
-	case "Float64Array":
-		val = 0x7FF8000300000011
-	case "document":
-		val = 0x7FF8000300000012
-	}
-	buf := make([]byte, 8)
-	endianess.PutUint64(buf, val)
-	_, err = proc.WriteAt(buf, int64(returnPtr))
+	// Retrieve the ID of the value
+	b := make([]byte, 8)
+	_, err = proc.ReadAt(b, int64(valueAddrPtr))
 	if err != nil {
 		log.Print(err)
 	}
-	fmt.Printf("Returned JS object ID %#x for js.Global().Get(\"%s\")", val, propertyName)
+	valRaw := endianess.Uint64(b)
+	valID := uint32(valRaw)
+
+	// TODO: Determine the object type
+	const typeMaskBits = 0x300000000
+	valType := int((valRaw & typeMaskBits) >> 32)
+
+	// TODO: Determine which is which: string, symbol, function, object
+	const (
+		JSTYPE_OBJECT   = 0 // Initial guess
+		JSTYPE_FUNCTION = 1 // Initial guess
+		JSTYPE_SYMBOL   = 2 // Initial guess
+		JSTYPE_STRING   = 3 // Initial guess
+	)
+
+	// Generate a JS value ref, and write it's id to the return pointer location
+	const nanHead = 0x7FF80000
+	valType = 3 // TODO: Use the correct constant when the type bits are figured out
+	id, _ := newJSRef(string(propertyName), valType, valID)
+	val := uint64(nanHead<<32) | uint64(valType<<32) | uint64(id)
+	endianess.PutUint64(b, val)
+	_, err = proc.WriteAt(b, int64(returnPtr))
+	if err != nil {
+		log.Print(err)
+	}
+	// fmt.Printf("Returned JS object ID %#x for js.Global().Get(\"%s\")", val, propertyName)
 	return
 }
 
