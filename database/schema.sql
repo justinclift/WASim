@@ -2,8 +2,8 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 10.8
--- Dumped by pg_dump version 10.8
+-- Dumped from database version 10.9
+-- Dumped by pg_dump version 10.9
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -81,7 +81,7 @@ CREATE TABLE public.execution_run (
     module_name text,
     program_counter bigint,
     stack_top bigint,
-    value bigint,
+    value numeric,
     preserve_top boolean,
     discard integer,
     condition_met boolean,
