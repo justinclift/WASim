@@ -18,6 +18,19 @@ type jsRef struct {
 	Type   int
 }
 
+const (
+	// Values taken from:
+	//   https://github.com/golang/go/blob/4ce6a8e89668b87dce67e2f55802903d6eb9110a/misc/wasm/wasm_exec.js#L165-L175
+	JSTYPE_OBJECT   = 0
+	JSTYPE_STRING   = 1
+	JSTYPE_SYMBOL   = 2
+	JSTYPE_FUNCTION = 3
+
+	nanHead         = 0x7FF80000
+	typeMaskBits    = 0x300000000
+)
+
+
 var (
 	// Values 0-7 are pre-reserved for values with specific meaning:
 	//   https://github.com/golang/go/blob/4ce6a8e89668b87dce67e2f55802903d6eb9110a/src/syscall/js/js.go#L76-L83
@@ -247,13 +260,15 @@ func syscallJSValueCall(proc *exec.Process, a int32, b int32, c int32, d int32, 
 	return
 }
 
+// Returns the requested property for a value
 func syscallJSValueGet(proc *exec.Process, returnPtr int32, valueAddrPtr int32, propertyNamePtr int32, propertyNameLen int32, paramE int32, paramF int32) {
 	var endianess = binary.LittleEndian
-	propertyName := make([]byte, propertyNameLen)
-	_, err := proc.ReadAt(propertyName, int64(propertyNamePtr))
+	p := make([]byte, propertyNameLen)
+	_, err := proc.ReadAt(p, int64(propertyNamePtr))
 	if err != nil {
 		log.Print(err)
 	}
+	propertyName := string(p)
 
 	// Retrieve the ID of the value
 	b := make([]byte, 8)
@@ -264,21 +279,18 @@ func syscallJSValueGet(proc *exec.Process, returnPtr int32, valueAddrPtr int32, 
 	valRaw := endianess.Uint64(b)
 	valID := uint32(valRaw)
 
-	// TODO: Determine the object type
-	const typeMaskBits = 0x300000000
-	valType := int((valRaw & typeMaskBits) >> 32)
+	// * Determine the type of the resulting property *
+	var valType int
 
-	// TODO: Determine which is which: string, symbol, function, object
-	const (
-		JSTYPE_OBJECT   = 0 // Initial guess
-		JSTYPE_FUNCTION = 1 // Initial guess
-		JSTYPE_SYMBOL   = 2 // Initial guess
-		JSTYPE_STRING   = 3 // Initial guess
-	)
+	// The DOM global object (id == 5) enumerates some things at start up.  Set the correct type for these calls.
+	if valID == 5 { // 5 == the DOM "global" in syscall/js
+		switch propertyName {
+		case "Object", "Array", "Int8Array", "Int16Array", "Int32Array", "Uint8Array", "Uint16Array", "Uint32Array", "Float32Array", "Float64Array":
+			valType = JSTYPE_FUNCTION
+		}
+	}
 
-	// Generate a JS value ref, and write it's id to the return pointer location
-	const nanHead = 0x7FF80000
-	valType = 3 // TODO: Use the correct constant when the type bits are figured out
+	// Generate a return value, and write it's id to wasm memory at the return pointer address
 	id, _ := newJSRef(string(propertyName), valType, valID)
 	val := uint64(nanHead<<32) | uint64(valType<<32) | uint64(id)
 	endianess.PutUint64(b, val)
@@ -286,7 +298,7 @@ func syscallJSValueGet(proc *exec.Process, returnPtr int32, valueAddrPtr int32, 
 	if err != nil {
 		log.Print(err)
 	}
-	// fmt.Printf("Returned JS object ID %#x for js.Global().Get(\"%s\")", val, propertyName)
+	// fmt.Printf("Returned JS object ID %#x for js.Global().Get(\"%s\")\n", val, propertyName)
 	return
 }
 
